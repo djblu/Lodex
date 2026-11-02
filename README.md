@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/logos/darkmode_white_text.png">
+    <source media="(prefers-color-scheme: light)" srcset="media/logos/lodex.png">
+    <img src="media/logos/lodex.png" alt="Lodex" width="360">
+  </picture>
+</p>
+
 # Lodex
 
 A coding agent for Visual Studio Code, powered by DeepSeek Harness and your chosen model endpoint.
