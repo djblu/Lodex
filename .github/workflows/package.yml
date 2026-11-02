@@ -1,0 +1,27 @@
+name: Package platform extensions
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [linux-x64, win32-x64, darwin-arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run package:platform -- ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lodex-${{ matrix.target }}
+          path: dist/*.vsix
+          compression-level: 0
+          retention-days: 14
