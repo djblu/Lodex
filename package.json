@@ -73,7 +73,7 @@
         {
           "type": "webview",
           "id": "lodex.chat",
-          "name": "Lodex Harness"
+          "name": "Lodex"
         }
       ]
     },
