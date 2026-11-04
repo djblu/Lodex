@@ -42,3 +42,7 @@ Install Node.js 24 and run `npm ci`, `npm test` and `npm run build`. The runtime
 Use **Build prebuilt runtimes** to build and integration-test Linux, Windows and Apple Silicon archives. Publish immutable runtime release assets, update their size/SHA-256 pins in `runtime-manifest.json`, then build extensions with `npm run package:platform -- win32-x64` (or `linux-x64` / `darwin-arm64`). Output defaults to `dist/`; an optional second argument selects another output directory.
 
 Platform-specific extension packages include a verified runtime archive. Native runtime tests exercise streaming, reads, approved and denied writes, compaction, live permission changes and cancellation against a loopback mock model API.
+
+### Shared chats over Remote SSH
+
+Chats are saved on the extension host, separately for each workspace folder. When connecting from another device, use the same SSH user and open the same server folder to see the same conversations. Existing workspace-local chats are copied into host storage automatically; their originals remain intact. Different servers and local installations do not synchronise with one another. Simultaneous edits to one chat are checked to prevent stale windows overwriting newer messages.

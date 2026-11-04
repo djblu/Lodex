@@ -7,17 +7,31 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 let shutdown;
 const {updateContext,externalURL}=require('./context-state.cjs');
-function activate(context) {
+async function activate(context) {
   let runtimeVision=false;
   let view, child, ready, busy = false, closing = false;
-  const store=new (require('./chat-store.cjs').ChatStore)(context.workspaceState);
+  const workspaceFolder=vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const workspaceRoot=workspaceFolder?await fs.realpath(workspaceFolder):null;
+  let emptyWorkspaceKey=context.workspaceState.get('emptyWorkspaceKey');
+  if(!workspaceRoot&&!emptyWorkspaceKey){emptyWorkspaceKey=randomUUID();await context.workspaceState.update('emptyWorkspaceKey',emptyWorkspaceKey);}
+  const workspaceKey=createHash('sha256').update(workspaceRoot||emptyWorkspaceKey).digest('hex').slice(0,24);
+  const store=await require('./host-chat-store.cjs').HostChatStore.open(path.join(context.globalStorageUri.fsPath,'chats',workspaceKey));
+  let recovered=[];
+  let recoveryWorkspace;
+  try{recoveryWorkspace=JSON.parse(await fs.readFile(path.join(context.globalStorageUri.fsPath,'recovered-chats.workspace.json'),'utf8')).workspace;}catch(e){if(e.code!=='ENOENT')throw e;}
+  if(workspaceRoot&&workspaceRoot===recoveryWorkspace){
+    for(const file of ['recovered-chats.imported.json','recovered-chats.json']){
+      try{recovered.push(...JSON.parse(await fs.readFile(path.join(context.globalStorageUri.fsPath,file),'utf8')));}catch(e){if(e.code!=='ENOENT')throw e;}
+    }
+  }
+  await store.migrate(context.workspaceState,recovered);
   let chatId = context.workspaceState.get('activeChat') || context.workspaceState.get('chatId') || randomUUID();
-  const saved=store.load(chatId);
+  const saved=await store.load(chatId);
   const validMode=value=>['manual','plan','bypass'].includes(value);
   let permissionMode=validMode(saved?.mode)?saved.mode:'manual';
-  let contextInfo = {...(saved?.contextInfo || context.workspaceState.get('contextInfo', {})), compacting:false};
+  let contextInfo = {...(saved?.contextInfo || {}), compacting:false};
   function contextFrame(f) {const next=updateContext(contextInfo,f);if(next.used===contextInfo.used&&next.max===contextInfo.max&&next.compacting===contextInfo.compacting)return;contextInfo=next;post({type:'contextInfo',...contextInfo});persist();}
-  let transcript = saved?.transcript || context.workspaceState.get('transcript') || [];
+  let transcript = saved?.transcript || [];
   let timer;
   let manualCompaction=false;
   const changeStore=new (require('./change-store.cjs').ChangeStore)(path.join(context.globalStorageUri.fsPath,'changes'));
@@ -171,8 +185,9 @@ function activate(context) {
   }
 
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e=>{if(e.affectsConfiguration('lodex'))modelInfo();}));
+  context.subscriptions.push(store.watch(()=>{if(view)chatMetadata();}));
   function chatMetadata() {post({type:'chatMetadata',activeId:chatId,chats:store.list()});}
-  async function saveChat() {await store.save({id:chatId,transcript,contextInfo,mode:permissionMode});chatMetadata();}
+  async function saveChat() {await store.save({id:chatId,transcript,contextInfo,mode:permissionMode});await context.workspaceState.update('activeChat',chatId);chatMetadata();}
   function persist() {
     if(timer)return;
     timer=setTimeout(()=>{timer=undefined;saveChat().catch(e=>vscode.window.showErrorMessage(`Lodex could not save chat: ${e.message}`));},1000);
@@ -182,7 +197,7 @@ function activate(context) {
     busy=true;post({type:'busy',value:true});
     try {
       clearTimeout(timer);timer=undefined;await saveChat();
-      const target=id?store.load(id):null;if(id&&!target)throw Error('Chat not found');
+      const target=id?await store.load(id):null;if(id&&!target)throw Error('Chat not found');
       permissionMode=validMode(target?.mode)?target.mode:'manual';
       chatId=target?.id||randomUUID();transcript=target?.transcript||[];contextInfo={...target?.contextInfo,compacting:false};pending.clear();
       await saveChat();post({type:'restore',transcript,busy:false,mode:permissionMode});post({type:'contextInfo',...contextInfo});post({type:'status',text:'Ready'});post({type:'page',page:'chat'});
